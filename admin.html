@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - Routing Rules</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+    <div class="container mx-auto max-w-6xl">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold">Admin - Chat router</h1>
+            <div class="space-x-4">
+                <button onclick="showAddModal()" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600">
+                    Add Rule
+                </button>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Routing Rules</h2>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead>
+                        <tr>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Original Model
+                            </th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Pattern
+                            </th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Redirect Model
+                            </th>
+                            <th class="px-6 py-3 bg-gray-50 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="rules-table-body" class="bg-white divide-y divide-gray-200">
+                        <!-- Rules will be dynamically inserted here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add/Edit Rule Modal -->
+    <div id="ruleModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg font-medium leading-6 text-gray-900 mb-4" id="modal-title">Add New Rule</h3>
+                <form id="rule-form" class="space-y-4">
+                    <input type="hidden" id="rule-id" value="">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Original Provider/Model</label>
+                        <select id="original-model" class="w-full p-2 border rounded">
+                            {% for model in models %}
+                            <option value="{{ model }}">{{ model }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Regex Pattern</label>
+                        <input type="text" id="regex-pattern" class="w-full p-2 border rounded" 
+                               placeholder="e.g. (?i)(credit card)">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Redirect Provider/Model</label>
+                        <select id="redirect-model" class="w-full p-2 border rounded">
+                            {% for model in models %}
+                            <option value="{{ model }}">{{ model }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="hideModal('ruleModal')" 
+                                class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                            Cancel
+                        </button>
+                        <button type="submit" id="submit-btn" 
+                                class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                            Save Rule
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div id="deleteModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 hidden overflow-y-auto h-full w-full">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <h3 class="text-lg font-medium leading-6 text-gray-900">Delete Rule</h3>
+                <div class="mt-2 px-7 py-3">
+                    <p class="text-gray-500">Are you sure you want to delete this rule?</p>
+                </div>
+                <div class="flex justify-center space-x-4">
+                    <button onclick="hideModal('deleteModal')" 
+                            class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                        Cancel
+                    </button>
+                    <button id="confirm-delete-btn" 
+                            class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
+                        Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variable to store the rule ID for deletion
+        let currentDeleteId = null;
+
+        // Function to show a modal
+        function showModal(modalId) {
+            document.getElementById(modalId).classList.remove('hidden');
+        }
+
+        // Function to hide a modal
+        function hideModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+            if (modalId === 'ruleModal') {
+                resetForm();
+            }
+        }
+
+        // Function to show add modal
+        function showAddModal() {
+            document.getElementById('modal-title').textContent = 'Add New Rule';
+            document.getElementById('submit-btn').textContent = 'Add Rule';
+            resetForm();
+            showModal('ruleModal');
+        }
+
+        // Function to show edit modal
+        async function showEditModal(ruleId) {
+            try {
+                const response = await fetch('/api/rules');
+                const rules = await response.json();
+                const rule = rules.find(r => r.id === ruleId);
+                
+                if (rule) {
+                    document.getElementById('modal-title').textContent = 'Edit Rule';
+                    document.getElementById('submit-btn').textContent = 'Update Rule';
+                    document.getElementById('rule-id').value = rule.id;
+                    document.getElementById('original-model').value = `${rule.original_provider}/${rule.original_model}`;
+                    document.getElementById('redirect-model').value = `${rule.redirect_provider}/${rule.redirect_model}`;
+                    document.getElementById('regex-pattern').value = rule.regex_pattern;
+                    
+                    showModal('ruleModal');
+                }
+            } catch (error) {
+                console.error('Error loading rule for edit:', error);
+                alert('Failed to load rule for editing');
+            }
+        }
+
+        // Function to show delete confirmation modal
+        function showDeleteModal(ruleId) {
+            currentDeleteId = ruleId;
+            showModal('deleteModal');
+        }
+
+        // Function to load and display existing rules
+        async function loadRules() {
+            try {
+                const response = await fetch('/api/rules');
+                const rules = await response.json();
+                const tableBody = document.getElementById('rules-table-body');
+                
+                tableBody.innerHTML = rules.map(rule => `
+                    <tr data-rule-id="${rule.id}">
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            ${rule.original_provider}/${rule.original_model}
+                        </td>
+                        <td class="px-6 py-4">
+                            ${rule.regex_pattern}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            ${rule.redirect_provider}/${rule.redirect_model}
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap">
+                            <div class="flex space-x-3">
+                                <button onclick="showEditModal(${rule.id})" 
+                                        class="text-blue-600 hover:text-blue-900">
+                                    Edit
+                                </button>
+                                <button onclick="showDeleteModal(${rule.id})" 
+                                        class="text-red-600 hover:text-red-900">
+                                    Delete
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                console.error('Error loading rules:', error);
+                alert('Failed to load rules');
+            }
+        }
+
+        // Function to handle rule form submission
+        async function handleRuleSubmission(event) {
+            event.preventDefault();
+            
+            const ruleId = document.getElementById('rule-id').value;
+            const originalModel = document.getElementById('original-model').value;
+            const redirectModel = document.getElementById('redirect-model').value;
+            const regexPattern = document.getElementById('regex-pattern').value;
+            
+            const [originalProvider, originalModelName] = originalModel.split('/');
+            const [redirectProvider, redirectModelName] = redirectModel.split('/');
+            
+            const ruleData = {
+                original_provider: originalProvider,
+                original_model: originalModelName,
+                regex_pattern: regexPattern,
+                redirect_provider: redirectProvider,
+                redirect_model: redirectModelName
+            };
+            
+            try {
+                let response;
+                if (ruleId) {
+                    response = await fetch(`/api/rules/${ruleId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(ruleData)
+                    });
+                } else {
+                    response = await fetch('/api/rules', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(ruleData)
+                    });
+                }
+                
+                if (response.ok) {
+                    hideModal('ruleModal');
+                    loadRules();
+                } else {
+                    const error = await response.json();
+                    throw new Error(error.message || 'Failed to save rule');
+                }
+            } catch (error) {
+                console.error('Error saving rule:', error);
+                alert(error.message || 'Failed to save rule');
+            }
+        }
+
+        // Function to handle rule deletion
+        async function handleDeleteRule() {
+            if (currentDeleteId) {
+                try {
+                    const response = await fetch(`/api/rules/${currentDeleteId}`, {
+                        method: 'DELETE'
+                    });
+                    
+                    if (response.ok) {
+                        hideModal('deleteModal');
+                        loadRules();
+                    } else {
+                        throw new Error('Failed to delete rule');
+                    }
+                } catch (error) {
+                    console.error('Error deleting rule:', error);
+                    alert('Failed to delete rule');
+                }
+                currentDeleteId = null;
+            }
+        }
+
+        // Function to reset the form
+        function resetForm() {
+            document.getElementById('rule-form').reset();
+            document.getElementById('rule-id').value = '';
+        }
+
+        // Event Listeners
+        document.getElementById('rule-form').addEventListener('submit', handleRuleSubmission);
+        document.getElementById('confirm-delete-btn').addEventListener('click', handleDeleteRule);
+        
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', loadRules);
+    </script>
+</body>
+</html>

@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Portal with File Upload</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+    <div class="container mx-auto max-w-4xl">
+        <h1 class="text-3xl font-bold mb-6 text-center">Chat Router</h1>
+        
+        <div class="bg-white rounded-lg shadow p-6">
+            <h2 class="text-xl font-semibold mb-4">Chat with AI Models</h2>
+            
+            <form id="chat-form" class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Select Provider & Model</label>
+                        <select id="model-select" class="w-full p-2 border rounded">
+                            <option value="">Loading models...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Available Models</label>
+                        <div id="models-list" class="p-2 border rounded bg-gray-50 h-10 overflow-y-auto text-sm">
+                            Loading models...
+                        </div>
+                    </div>
+                </div>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Prompt</label>
+                    <textarea id="prompt-input" rows="4" placeholder="Enter your message here..."
+                             class="w-full p-2 border rounded"></textarea>
+                </div>
+
+                <div class="flex items-center space-x-4">
+                    <div class="flex-grow">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Upload File</label>
+                        <div class="space-y-2">
+                            <input type="file" id="file-input" 
+                                   accept=".pdf,.txt,.doc,.docx,.csv,.xlsx,.json,.xml" 
+                                   class="w-full p-2 border rounded bg-gray-50">
+                            <p class="text-xs text-gray-500">
+                                Supported formats: PDF, TXT, DOC, DOCX, CSV, XLSX, JSON, XML (Max size: 16MB)
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex-none">
+                        <button type="submit" class="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 mt-6">
+                            Send Message
+                        </button>
+                    </div>
+                </div>
+            </form>
+            
+            <div class="mt-6">
+                <h3 class="text-lg font-medium mb-2">Response</h3>
+                <div id="response-container" class="border rounded p-4 bg-gray-50 min-h-24">
+                    <p class="text-gray-500 text-center">Response will appear here</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables to store model data
+        let availableModels = [];
+        
+        // Parse provider and model from combined string
+        function parseModelString(modelString) {
+            const [provider, model] = modelString.split('/');
+            return { provider, model };
+        }
+        
+        // Fetch available models from API
+        async function fetchModels() {
+            const modelSelect = document.getElementById('model-select');
+            const modelsList = document.getElementById('models-list');
+            
+            try {
+                const response = await fetch('/models');
+                availableModels = await response.json();
+                
+                if (availableModels.length > 0) {
+                    // Populate dropdown options
+                    const options = availableModels.map(model => {
+                        return `<option value="${model}">${model}</option>`;
+                    });
+                    modelSelect.innerHTML = options.join('');
+                    
+                    // Display available models list
+                    modelsList.innerHTML = availableModels.join('<br>');
+                } else {
+                    modelSelect.innerHTML = '<option value="">No models available</option>';
+                    modelsList.innerHTML = 'No models available';
+                }
+            } catch (error) {
+                console.error('Error fetching models:', error);
+                modelSelect.innerHTML = '<option value="">Failed to load models</option>';
+                modelsList.innerHTML = 'Failed to load models';
+            }
+        }
+        
+        // Display response in the response container
+        function displayResponse(response, fileInfo = null) {
+            const responseContainer = document.getElementById('response-container');
+            
+            let html = `<div class="space-y-4">`;
+            
+            // Add message content
+            html += `<div class="p-3 bg-white border border-gray-200 rounded-lg">
+                        <p>${response.response || response}</p>
+                    </div>`;
+            
+            // Add file processing info if present
+            if (fileInfo) {
+                html += `
+                    <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p class="text-blue-800">
+                            <strong>File Processed:</strong> ${fileInfo.original_name}<br>
+                            <strong>Type:</strong> ${fileInfo.type}<br>
+                            <strong>Size:</strong> ${fileInfo.size_formatted}
+                        </p>
+                    </div>
+                `;
+            }
+            
+            // Add routing info if present
+            if (response.routing_info) {
+                html += `
+                    <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <p class="text-yellow-800">
+                            <strong>Request Routed:</strong><br>
+                            Original: ${response.routing_info.original_provider}/${response.routing_info.original_model}<br>
+                            Redirected to: ${response.routing_info.redirected_to}<br>
+                            Reason: ${response.routing_info.reason}
+                        </p>
+                    </div>
+                `;
+            }
+            
+            html += `</div>`;
+            
+            responseContainer.innerHTML = html;
+        }
+        
+        // Form submission handler
+        document.getElementById('chat-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const modelSelect = document.getElementById('model-select');
+            const promptInput = document.getElementById('prompt-input');
+            const fileInput = document.getElementById('file-input');
+            const responseContainer = document.getElementById('response-container');
+            
+            const selectedModel = modelSelect.value;
+            const prompt = promptInput.value.trim();
+            const file = fileInput.files[0];
+            
+            if (!selectedModel || (!prompt && !file)) {
+                alert('Please select a model and enter a prompt or upload a file');
+                return;
+            }
+            
+            // Parse provider and model from selected option
+            const { provider, model } = parseModelString(selectedModel);
+            
+            // Show loading state
+            responseContainer.innerHTML = '<p class="text-gray-500 text-center">Processing request...</p>';
+            
+            try {
+                const formData = new FormData();
+                formData.append('provider', provider);
+                formData.append('model', model);
+                formData.append('prompt', prompt);
+                if (file) {
+                    formData.append('file', file);
+                }
+                
+                const response = await fetch('/v1/chat/completions', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Display AI response with file info if present
+                    displayResponse(data, data.file_info);
+                } else {
+                    // Display error message
+                    responseContainer.innerHTML = `<p class="text-red-500">Error: ${data.error || 'Unknown error occurred'}</p>`;
+                }
+            } catch (error) {
+                console.error('Error sending request:', error);
+                responseContainer.innerHTML = '<p class="text-red-500">Failed to send request. Check console for details.</p>';
+            }
+        });
+
+        // Update form submission handler to handle file routing information
+        document.getElementById('chat-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const modelSelect = document.getElementById('model-select');
+            const promptInput = document.getElementById('prompt-input');
+            const fileInput = document.getElementById('file-input');
+            const responseContainer = document.getElementById('response-container');
+            
+            const selectedModel = modelSelect.value;
+            const prompt = promptInput.value.trim();
+            const file = fileInput.files[0];
+            
+            if (!selectedModel || (!prompt && !file)) {
+                alert('Please select a model and enter a prompt or upload a file');
+                return;
+            }
+            
+            const { provider, model } = parseModelString(selectedModel);
+            
+            responseContainer.innerHTML = '<p class="text-gray-500 text-center">Processing request...</p>';
+            
+            try {
+                const formData = new FormData();
+                formData.append('provider', provider);
+                formData.append('model', model);
+                if (prompt) formData.append('prompt', prompt);
+                if (file) formData.append('file', file);
+                
+                const response = await fetch('/v1/chat/completions', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    let html = `<div class="space-y-4">`;
+                    
+                    // Add response content
+                    html += `<div class="p-3 bg-white border border-gray-200 rounded-lg">
+                                <p>${data.response}</p>
+                            </div>`;
+                    
+                    // Add file processing info if present
+                    if (data.file_info) {
+                        html += `
+                            <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <p class="text-blue-800">
+                                    <strong>File Processed:</strong> ${data.file_info.original_name}<br>
+                                    <strong>Type:</strong> ${data.file_info.type}<br>
+                                    <strong>Size:</strong> ${data.file_info.size_formatted}
+                                </p>
+                            </div>
+                        `;
+                    }
+                    
+                    // Add routing info (content or file routing)
+                    if (data.routing_info) {
+                        const routingType = data.file_info ? 'File Upload Routing' : 'Content Routing';
+                        html += `
+                            <div class="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <p class="text-yellow-800">
+                                    <strong>${routingType}:</strong><br>
+                                    Original: ${data.routing_info.original_provider}/${data.routing_info.original_model}<br>
+                                    Redirected to: ${data.routing_info.redirected_to}<br>
+                                    ${data.routing_info.reason ? `Reason: ${data.routing_info.reason}` : ''}
+                                </p>
+                            </div>
+                        `;
+                    }
+                    
+                    html += `</div>`;
+                    responseContainer.innerHTML = html;
+                } else {
+                    responseContainer.innerHTML = `<p class="text-red-500">Error: ${data.error || 'Unknown error occurred'}</p>`;
+                }
+            } catch (error) {
+                console.error('Error sending request:', error);
+                responseContainer.innerHTML = '<p class="text-red-500">Failed to send request. Check console for details.</p>';
+            }
+        });
+        
+        // Initialize the application
+        document.addEventListener('DOMContentLoaded', fetchModels);
+        
+    </script>
+</body>
+</html>
